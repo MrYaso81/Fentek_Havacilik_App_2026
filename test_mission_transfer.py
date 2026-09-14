@@ -59,6 +59,10 @@ class MissionTests(unittest.TestCase):
         for p in ([],[(41,29,0)],[(91,29,40)],[(41,29,float('nan'))]):
             with self.assertRaises(ValueError):validate_points(p)
 
+    def test_more_than_ten_points_are_allowed(self):
+        points=[(41+i/100000,29,40) for i in range(250)]
+        self.assertEqual(len(validate_points(points)),250)
+
     def test_cancel(self):
         t,m,_=self.make([]);t.stop.set()
         with self.assertRaisesRegex(RuntimeError,'iptal'):t.run([(41,29,40)])

@@ -23,10 +23,13 @@ class Wire:
         self.hb = heartbeat(armed)
         self.mav = self
         self.sent = []
+        self.manual = []
         self.reads = 0
     def heartbeat_send(self, *args): pass
     def request_data_stream_send(self, *args): self.stream = args
     def command_long_send(self, *args): self.sent.append(args)
+    def manual_control_send(self,*args):self.manual.append(args)
+    def mission_set_current_send(self,*args):self.current=args
     def close(self): self.closed = True
     def recv_match(self, **kwargs):
         self.reads += 1
@@ -71,6 +74,47 @@ class Tests(unittest.TestCase):
     def test_accel_command(self):
         wire, _ = self.execute('accel')
         self.assertEqual(wire.sent[0], (1, 1, 241, 0, 0, 0, 0, 0, 1, 0, 0))
+
+    def test_extended_ground_calibration_commands(self):
+        positions={'compass':1,'rc':3,'airspeed':5,'esc':6}
+        for action,index in positions.items():
+            wire,_=self.execute(action)
+            self.assertEqual(wire.sent[0][2],241)
+            self.assertEqual(wire.sent[0][4+index],1)
+
+    def test_guarded_motor_and_servo_outputs(self):
+        wire,_=self.execute(('motor_test',2,15,2))
+        self.assertEqual(wire.sent[0][2],getattr(mavutil.mavlink,'MAV_CMD_DO_MOTOR_TEST',209))
+        self.assertEqual(wire.sent[0][4:8],(2,0,15.0,2.0))
+        wire,_=self.execute(('servo_test',3,1600,1,1500))
+        self.assertEqual(wire.sent[0][2],getattr(mavutil.mavlink,'MAV_CMD_DO_SET_SERVO',183))
+        self.assertEqual(wire.sent[0][4:6],(3,1600))
+
+    def test_ground_outputs_blocked_outside_usb_setup(self):
+        self.assertEqual(self.execute(('motor_test',1,10,1),setup=False)[0].sent,[])
+        self.assertEqual(self.execute(('servo_test',1,1500,1,1500),armed=True)[0].sent,[])
+
+    def test_gimbal_command_range(self):
+        wire,_=self.execute(('gimbal',-30,45),setup=False)
+        self.assertEqual(wire.sent[0][2],getattr(mavutil.mavlink,'MAV_CMD_DO_MOUNT_CONTROL',205))
+        self.assertEqual(wire.sent[0][4:7],(-30.0,0,45.0))
+
+    def test_camera_trigger_command(self):
+        wire,_=self.execute(('camera_trigger',),setup=False)
+        self.assertEqual(wire.sent[0][2],getattr(mavutil.mavlink,'MAV_CMD_IMAGE_START_CAPTURE',2000))
+        self.assertEqual(wire.sent[0][6],1)
+
+    def test_pause_and_manual_control(self):
+        wire,_=self.execute(('mission','pause'),armed=True,setup=False)
+        self.assertEqual(wire.sent[0][2],getattr(mavutil.mavlink,'MAV_CMD_DO_PAUSE_CONTINUE',193))
+        with patch('connection.SafetyGate.allow',return_value=True):wire,_=self.execute(('mission','resume'),armed=True,setup=False)
+        self.assertEqual(wire.sent[0][4],1)
+        wire,_=self.execute(('manual_control',250,0,32767,-150),armed=True,setup=False)
+        self.assertEqual(wire.manual[0],(1,250,0,32767,-150,0))
+
+    def test_select_mission_step(self):
+        with patch('connection.SafetyGate.allow',return_value=True):wire,_=self.execute(('mission','jump',7),armed=True,setup=False)
+        self.assertEqual(wire.current,(1,1,7))
 
     def test_armed_and_telemetry_block_calibration(self):
         self.assertEqual(self.execute('accel', armed=True)[0].sent, [])

@@ -114,9 +114,6 @@ class EnhancedStation(SchoolStation):
 
     def add_marker(self,event):
         if not self.marking: return
-        if len(self.markers)>=10:
-            messagebox.showinfo('İşaretler','En fazla 10 not noktası ekleyebilirsiniz.')
-            return
         # Inverse Web Mercator uses the same center/zoom as the actual background.
         cx,cy=world(*CENTER)
         x=cx+event.x-self.canvas.winfo_width()/2
@@ -213,6 +210,13 @@ class EnhancedStation(SchoolStation):
             self.canvas.create_oval(x-2,y-2,x+2,y+2,fill='#ffd42a',outline='#6f5310')
             if altitude:
                 self.canvas.create_text(x,y+20,text=f'Z {altitude:g} m',fill=WHITE,font=('Segoe UI',8,'bold'))
+        rally=getattr(getattr(self,'operations',None),'rally_points',())
+        for i,marker in enumerate(rally,1):
+            x,y=self.marker_xy(marker)
+            if y>self.canvas.winfo_height()-35:continue
+            self.canvas.create_polygon(x,y-15,x-13,y+10,x+13,y+10,fill='#62bfff',outline='#e7f6ff',width=2)
+            self.canvas.create_text(x,y+1,text='R'+str(i),fill=BLACK,font=('Segoe UI',7,'bold'))
+            self.canvas.create_text(x,y+24,text=f'RALLY • {marker[2]:g} m',fill='#8fd2ff',font=('Segoe UI',8,'bold'))
 
     def export_events(self):
         path=filedialog.asksaveasfilename(defaultextension='.txt',initialfile='demo_olay_gunlugu.txt',filetypes=[('Metin','*.txt')])

@@ -321,9 +321,6 @@ class Atlas(Workbench):
 
     def add_marker(self,event):
         if not self.marking:return
-        if len(self.markers)>=10:
-            messagebox.showinfo('İşaretler','En fazla 10 not noktası ekleyebilirsiniz.')
-            return
         cx,cy=world(*self.view_center,self.view_zoom)
         x=cx+event.x-self.canvas.winfo_width()/2
         y=cy+event.y-self.canvas.winfo_height()/2

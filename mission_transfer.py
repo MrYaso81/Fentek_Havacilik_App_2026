@@ -2,9 +2,13 @@
 import math
 import time
 
+MAX_MAVLINK_MISSION_ITEMS=65535
+
 
 def validate_points(points):
-    if not 1<=len(points)<=100:raise ValueError('1–100 görev noktası gerekli.')
+    if not points:raise ValueError('En az 1 görev noktası gerekli.')
+    if len(points)>MAX_MAVLINK_MISSION_ITEMS-2:
+        raise ValueError('Nokta sayısı MAVLink görev protokolünün kapasitesini aşıyor.')
     result=[]
     for lat,lon,alt in points:
         if not all(math.isfinite(v) for v in (lat,lon,alt)) or not (-90<=lat<=90 and -180<=lon<=180 and 0<alt<=10000):
@@ -82,6 +86,8 @@ class Transfer:
             for waypoint,channel,pwm in servo_actions:
                 if waypoint==index:items.append((183,2,0,0,0,channel,pwm,0,0))
         items += [(20,3,0,0,0,0,0,0,0)] # explicit RTL end command
+        if len(items)>MAX_MAVLINK_MISSION_ITEMS:
+            raise ValueError('Nokta ve servo komutları MAVLink görev kapasitesini aşıyor.')
         self.report(f'Görev yükleniyor: {len(points)} nokta, {len(servo_actions)} servo komutu + eve dönüş. Uçuş başlatılmayacak.')
         send=lambda:self.link.mav.mission_count_send(s,c,len(items))
         send()

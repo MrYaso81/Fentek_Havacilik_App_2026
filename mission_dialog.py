@@ -25,10 +25,13 @@ def open_mission(app):
     tabs=ttk.Notebook(body);tabs.pack(fill='both',expand=True)
     route_tab=ttk.Frame(tabs,padding=8);servo_tab=ttk.Frame(tabs,padding=8)
     tabs.add(route_tab,text='Rota noktaları');tabs.add(servo_tab,text='Servo komutları')
-    table=ttk.Treeview(route_tab,columns=('lat','lon','alt'),show='headings',height=10)
+    table_box=ttk.Frame(route_tab);table_box.pack(fill='x')
+    table=ttk.Treeview(table_box,columns=('lat','lon','alt'),show='headings',height=10)
     for col,text in [('lat','Enlem'),('lon','Boylam'),('alt','HOME üstü irtifa (m)')]:
         table.heading(col,text=text);table.column(col,width=210)
-    table.pack(fill='x')
+    table_scroll=ttk.Scrollbar(table_box,orient='vertical',command=table.yview)
+    table.configure(yscrollcommand=table_scroll.set)
+    table.pack(side='left',fill='x',expand=True);table_scroll.pack(side='right',fill='y')
     snapshot=[tuple(p) for p in app.markers]
     for i,p in enumerate(snapshot):table.insert('','end',iid=str(i),values=(f'{p[0]:.7f}',f'{p[1]:.7f}',p[2] if len(p)>2 and p[2]>0 else 'GİRİN'))
     edit=ttk.Frame(route_tab);edit.pack(fill='x',pady=8)

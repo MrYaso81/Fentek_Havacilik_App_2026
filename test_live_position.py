@@ -37,5 +37,17 @@ class PositionTests(unittest.TestCase):
     def test_unknown_heading(self):
         s=self.prepare();m=self.global_msg();m.hdg=65535;s.ingest(m,10)
         self.assertIsNone(s.position['heading'])
+    def test_live_battery_values(self):
+        s=PositionState()
+        s.ingest(msg('SYS_STATUS',onboard_control_sensors_present=7,onboard_control_sensors_enabled=7,
+                     onboard_control_sensors_health=7,voltage_battery=16420,current_battery=1234,
+                     battery_remaining=76,load=200),10)
+        s.ingest(msg('BATTERY_STATUS',id=0,current_consumed=845,temperature=3125),10)
+        self.assertEqual(s.battery,76);self.assertAlmostEqual(s.battery_voltage,16.42)
+        self.assertAlmostEqual(s.battery_current,12.34);self.assertEqual(s.battery_consumed,845)
+        self.assertAlmostEqual(s.battery_temperature,31.25)
+    def test_radio_status(self):
+        s=PositionState();s.ingest(msg('RADIO_STATUS',rssi=180,remrssi=170,txbuf=90,noise=120,remnoise=115,rxerrors=4,fixed=7),10)
+        self.assertEqual(s.radio['rssi'],180);self.assertEqual(s.radio['txbuf'],90);self.assertEqual(s.radio_time,10)
 
 if __name__=='__main__':unittest.main()

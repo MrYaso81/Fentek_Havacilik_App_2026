@@ -14,27 +14,38 @@ def install_button_motion(root):
         if not base:return
         name=f'Motion{id(widget)}.{original}' if themed else None
         if themed:
-            style.configure(name,background=base)
+            style.configure(name,background=base,borderwidth=1,relief='flat',bordercolor=base,lightcolor=base,darkcolor=base)
             style.map(name,background=[('disabled','#303238')])
-            widget.configure(style=name)
-        state={'job':None,'base':base,'current':base}
+            widget.configure(style=name,cursor='hand2')
+        else:
+            widget.configure(cursor='hand2',highlightthickness=1,highlightbackground=base,highlightcolor='#ffd42a')
+        state={'job':None,'base':base,'current':base,'depth':0.0}
         widget._motion=state
         def disabled():
             return widget.instate(['disabled']) if themed else widget.cget('state')=='disabled'
-        def animate(target):
+        def animate(target,target_depth=0.0):
             if state['job']:
                 root.after_cancel(state['job']);state['job']=None
             if not widget.winfo_exists() or disabled():return
             start=widget.winfo_rgb(state['current'])
             end=widget.winfo_rgb(target)
+            start_depth=state['depth']
             def frame(step=1):
                 state['job']=None
                 if not widget.winfo_exists() or disabled():return
                 t=1-(1-step/8)**3
                 color='#'+''.join(f'{round((a+(b-a)*t)/257):02x}' for a,b in zip(start,end))
+                depth=start_depth+(target_depth-start_depth)*t
                 state['current']=color
-                if themed:style.configure(name,background=color)
-                else:widget.configure(background=color,activebackground=color)
+                state['depth']=depth
+                base_rgb=widget.winfo_rgb(state['base']);gold=widget.winfo_rgb('#ffd42a')
+                outline='#'+''.join(f'{round((a+(b-a)*depth)/257):02x}' for a,b in zip(base_rgb,gold))
+                if themed:
+                    style.configure(name,background=color,relief='raised' if depth>.35 else 'flat',
+                                    bordercolor=outline,lightcolor=outline,darkcolor=outline)
+                else:
+                    widget.configure(background=color,activebackground=color,highlightbackground=outline,
+                                     relief='raised' if depth>.35 else 'flat')
                 if step<8:state['job']=root.after(16,lambda:frame(step+1))
             frame()
         def enter(_):
@@ -42,9 +53,9 @@ def install_button_motion(root):
                 state['base']=state['current']=widget.cget('background')
             rgb=widget.winfo_rgb(state['base'])
             hover='#'+''.join(f'{min(255,round(v/257*.82+46)):02x}' for v in rgb)
-            animate(hover)
-        def leave(_):animate(state['base'])
-        def press(_):animate('#b49a35')
+            animate(hover,1.0)
+        def leave(_):animate(state['base'],0.0)
+        def press(_):animate('#b49a35',.55)
         def release(_):
             # Let existing command handlers finish before restoring their selected color.
             root.after_idle(lambda:enter(None) if widget.winfo_exists() else None)

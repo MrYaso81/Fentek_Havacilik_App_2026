@@ -2,6 +2,8 @@
 import math
 import queue
 import json
+import os
+import base64
 import subprocess
 import threading
 import time
@@ -10,6 +12,7 @@ import tkinter as tk
 from tkinter import ttk,messagebox
 from pathlib import Path
 from urllib.parse import urlencode
+from urllib.error import HTTPError, URLError
 from urllib.request import Request,urlopen
 from cockpit import Cockpit
 from atlas import Atlas
@@ -17,8 +20,11 @@ from branded import BLACK,SURFACE,YELLOW,WHITE,GRAY
 from demo import CENTER,world,sample
 from button_motion import install_button_motion
 from startup_intro import StartupIntro
-from mission_dialog import open_mission
 from live_map import LiveMap
+from flight_tools import google_static_url
+from alert_system import AlertManager
+from pilot_ari import PilotAri
+from camera_view import CameraView
 
 
 def parse_windows_location(text):
@@ -50,16 +56,28 @@ class FlightPro(Cockpit):
         self.feature_queue=queue.Queue()
         self.feature_loading=False
         self.feature_job=None
+        self.google_maps_key=os.environ.get('GOOGLE_MAPS_API_KEY','').strip()
+        self.google_queue=queue.Queue();self.google_loading=False;self.google_reload_pending=False;self.google_image=None
+        self.google_request_signature=None
+        self.google_loaded_signature=None
+        self.google_job=None
         super().__init__(root,autoload=False)
         root.title('Fentek Havacılık • İHA Uçuş Merkezi')
         self.live_map=LiveMap(self)
+        self.alert_manager=AlertManager(self)
+        self.pilot_ari=PilotAri(self)
+        self.camera_view=CameraView(self)
         self.add_flight_controls()
         self.build_map_settings()
-        ttk.Button(self.pages['Harita ayarları'],text='Cube • Canlı konuma bağlan',command=self.live_map.dialog).pack(anchor='w',pady=8)
+        from operations import Operations
+        self.operations=Operations(self)
+        from ground_tools import GroundTools
+        self.ground_tools=GroundTools(self)
         install_button_motion(root)
         self.startup_intro=StartupIntro(root) if autoload else None
         self.location_job=root.after(120,self.poll_location)
         self.feature_job=root.after(120,self.poll_features)
+        self.google_job=root.after(120,self.poll_google)
         if autoload:
             root.after(300,self.load_map)
             root.after(900,self.request_pc_location)
@@ -75,19 +93,16 @@ class FlightPro(Cockpit):
         live=self.pages['Uçuş ekranı']
         quick=tk.Frame(live,bg='#121315',padx=10,pady=8)
         quick.pack(fill='x',before=live.winfo_children()[1],pady=(0,10))
-        self.quick_pause=ttk.Button(quick,text='⏸  Duraklat',command=self.pause)
-        self.quick_pause.pack(side='left',padx=(0,7))
-        ttk.Button(quick,text='↺  Baştan başlat',command=self.reset,style='Dark.TButton').pack(side='left',padx=7)
-        self.quick_link=ttk.Button(quick,text='⌁  Bağlantı kaybını dene',command=self.toggle_link,style='Dark.TButton')
-        self.quick_link.pack(side='left',padx=7)
+        self.connect_button=ttk.Button(quick,text='⌁  CUBE’A BAĞLAN • CANLI KONUM',command=self.live_map.dialog)
+        self.connect_button.pack(side='left',padx=(0,7))
         self.live_map.arm_button=ttk.Button(quick,text='ARM',command=self.live_map.arm_toggle,style='Dark.TButton',state='disabled')
         self.live_map.arm_button.pack(side='left',padx=7)
-        ttk.Button(quick,text='Görev yükle',command=lambda:open_mission(self),style='Dark.TButton').pack(side='left',padx=7)
-        ttk.Button(quick,text='◎  İHA’yı merkezle',command=self.center_vehicle,style='Dark.TButton').pack(side='right')
+        ttk.Button(quick,text='Görev planlama',command=lambda:self.select('Görev planlama'),style='Dark.TButton').pack(side='left',padx=7)
+        ttk.Button(quick,text='Güvenlik durumu',command=lambda:self.select('Güvenlik'),style='Dark.TButton').pack(side='left',padx=7)
         center=self.canvas.master
         top=self.canvas.pack_info()['in'] if False else center.winfo_children()[0]
         self.map_mode_var=tk.StringVar(value=self.map_mode)
-        mode=ttk.Combobox(top,textvariable=self.map_mode_var,values=['Dünya Haritası','Uydu Görüntüsü','Simülasyon Haritası (3D)'],state='readonly',width=24)
+        mode=ttk.Combobox(top,textvariable=self.map_mode_var,values=['Dünya Haritası','Uydu Görüntüsü','Google Uydu','Simülasyon Haritası (3D)'],state='readonly',width=24)
         self.map_mode_control=mode
         mode.pack(side='right',padx=10)
         mode.bind('<<ComboboxSelected>>',self.change_map_mode)
@@ -111,8 +126,6 @@ class FlightPro(Cockpit):
         self.draw_map()
 
     def add_coordinate_marker(self):
-        if len(getattr(self,'markers',[]))>=10:
-            messagebox.showinfo('Noktalar','En fazla 10 harita noktası ekleyebilirsiniz.');return
         window=tk.Toplevel(self.root);window.title('Koordinatla nokta ekle');window.geometry('560x315');window.resizable(False,False);window.configure(bg=BLACK);window.transient(self.root)
         box=tk.Frame(window,bg=BLACK,padx=24,pady=20);box.pack(fill='both',expand=True)
         tk.Label(box,text='KOORDİNATLA NOKTA EKLE',bg=BLACK,fg=YELLOW,font=('Segoe UI',15,'bold')).pack(anchor='w')
@@ -148,8 +161,12 @@ class FlightPro(Cockpit):
             text='© OpenStreetMap contributors'
         elif self.map_mode=='Uydu Görüntüsü':
             text='© Esri • Maxar • Earthstar • GIS Community'
+        elif self.map_mode=='Google Uydu':
+            text='Google Maps Platform • Static satellite'
         else:text='ⓘ Fentek Havacılık • Harita kaynakları'
         self.map_credit_button.configure(text=text)
+        if self.map_mode=='Google Uydu':self.map_credit_button.place(relx=0.0,rely=0.0,x=8,y=8,anchor='nw')
+        else:self.map_credit_button.place(relx=0.0,rely=1.0,x=8,y=-8,anchor='sw')
 
     def show_map_licenses(self):
         existing=getattr(self,'license_window',None)
@@ -158,15 +175,40 @@ class FlightPro(Cockpit):
         window=tk.Toplevel(self.root)
         self.license_window=window
         window.title('Fentek Havacılık • Harita Kaynakları ve Lisanslar')
-        window.geometry('720x590')
-        window.minsize(620,480)
+        screen_w,screen_h=window.winfo_screenwidth(),window.winfo_screenheight()
+        width=min(860,max(680,screen_w-180))
+        height=min(690,max(540,screen_h-180))
+        window.geometry(f'{width}x{height}')
+        window.minsize(640,520)
         window.configure(bg=BLACK)
         header=tk.Frame(window,bg=SURFACE,padx=18,pady=14)
         header.pack(fill='x')
         tk.Label(header,text='HARİTA KAYNAKLARI VE LİSANSLAR',bg=SURFACE,fg=YELLOW,font=('Segoe UI',15,'bold')).pack(anchor='w')
         tk.Label(header,text='Fentek Havacılık • veri kaynakları, telifler ve kullanım notları',bg=SURFACE,fg=GRAY,font=('Segoe UI',9)).pack(anchor='w',pady=(4,0))
-        body=tk.Text(window,bg='#111315',fg=WHITE,insertbackground=YELLOW,relief='flat',wrap='word',padx=18,pady=16,font=('Segoe UI',10),cursor='arrow')
-        body.pack(fill='both',expand=True,padx=16,pady=14)
+        # Pack the footer first so the expanding text area can never cover its buttons.
+        links=tk.Frame(window,bg=BLACK,padx=16,pady=12)
+        links.pack(side='bottom',fill='x')
+        link_specs=(
+            ('OpenStreetMap lisansı','https://www.openstreetmap.org/copyright',True),
+            ('OSM döşeme kuralları','https://operations.osmfoundation.org/policies/tiles/',False),
+            ('Esri atıf bilgisi','https://developers.arcgis.com/documentation/glossary/data-attribution/',False),
+            ('Google Maps koşulları','https://cloud.google.com/maps-platform/terms',False))
+        for label,url,primary in link_specs:
+            tk.Button(links,text=label,command=lambda u=url:webbrowser.open(u),bg=YELLOW if primary else '#292c30',
+                      fg=BLACK if primary else WHITE,activebackground='#ffe46b' if primary else '#41454a',
+                      activeforeground=BLACK if primary else WHITE,relief='flat',bd=0,padx=12,pady=8,
+                      font=('Segoe UI',9,'bold'),cursor='hand2').pack(side='left',padx=(0,8))
+        tk.Button(links,text='Kapat',command=window.destroy,bg=YELLOW,fg=BLACK,activebackground='#ffe46b',
+                  activeforeground=BLACK,relief='flat',bd=0,padx=22,pady=8,font=('Segoe UI',9,'bold'),
+                  cursor='hand2').pack(side='right')
+        body_host=tk.Frame(window,bg=BLACK)
+        body_host.pack(fill='both',expand=True,padx=16,pady=14)
+        scroll=ttk.Scrollbar(body_host,orient='vertical')
+        scroll.pack(side='right',fill='y')
+        body=tk.Text(body_host,bg='#111315',fg=WHITE,insertbackground=YELLOW,relief='flat',wrap='word',padx=18,pady=16,
+                     font=('Segoe UI',10),cursor='arrow',yscrollcommand=scroll.set)
+        body.pack(side='left',fill='both',expand=True)
+        scroll.configure(command=body.yview)
         content=(
             '1. DÜNYA HARİTASI — OPENSTREETMAP\n\n'
             'Harita verisi © OpenStreetMap contributors. Veriler Open Database License (ODbL) 1.0 kapsamında kullanılır. '
@@ -174,20 +216,17 @@ class FlightPro(Cockpit):
             '2. UYDU GÖRÜNTÜSÜ — ESRI WORLD IMAGERY\n\n'
             'Tiles © Esri — Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community. '
             'Uydu katmanı canlı kamera yayını değildir; sağlayıcı tarafından hazırlanmış harita görüntüleridir.\n\n'
-            '3. ŞEHİR VE ÜLKE ÇÖZÜMLEMESİ\n\n'
+            '3. GOOGLE UYDU — MAPS STATIC API\n\n'
+            'Google uydu seçeneği kullanıcının API anahtarıyla Maps Static API üzerinden alınır. Google logosu ve atfı görüntü içinde korunur. '
+            'Anahtar dosyaya yazılmaz. API etkinliği, kota, faturalandırma ve kullanım koşulları Google hesabına bağlıdır.\n\n'
+            '4. ŞEHİR VE ÜLKE ÇÖZÜMLEMESİ\n\n'
             'Yer adı sonuçları OpenStreetMap verisini kullanan Nominatim hizmetinden alınır. Sonuçlar yaklaşık olabilir.\n\n'
-            '4. FENTEK HAVACILIK UYGULAMA NOTLARI\n\n'
+            '5. FENTEK HAVACILIK UYGULAMA NOTLARI\n\n'
             'Fentek Havacılık, üçüncü taraf harita verilerinin sahibi olduğunu iddia etmez. Harita görüntüleri yedi gün yerel '
             'önbellekte tutulabilir. Sentetik demo konumu, gerçek uçuş veya canlı uydu takibi anlamına gelmez. İnternet erişimi '
             've harita servislerinin kullanılabilirliği ilgili sağlayıcılara bağlıdır.\n')
         body.insert('1.0',content)
         body.configure(state='disabled')
-        links=tk.Frame(window,bg=BLACK,padx=16,pady=10)
-        links.pack(fill='x')
-        ttk.Button(links,text='OpenStreetMap telif ve lisans',command=lambda:webbrowser.open('https://www.openstreetmap.org/copyright')).pack(side='left')
-        ttk.Button(links,text='OSM döşeme kuralları',command=lambda:webbrowser.open('https://operations.osmfoundation.org/policies/tiles/'),style='Dark.TButton').pack(side='left',padx=8)
-        ttk.Button(links,text='Esri veri atfı',command=lambda:webbrowser.open('https://developers.arcgis.com/documentation/glossary/data-attribution/'),style='Dark.TButton').pack(side='left')
-        ttk.Button(links,text='Kapat',command=window.destroy).pack(side='right')
 
     def build_xyz_overlay(self):
         panel=tk.Frame(self.canvas,bg='#111315',highlightthickness=1,highlightbackground='#65571e',padx=10,pady=8)
@@ -252,9 +291,6 @@ class FlightPro(Cockpit):
             messagebox.showinfo('Koordinat','Canlı NED değerleri kartın yerel başlangıcına göredir. Görev noktalarını enlem/boylam haritasından ekleyin.');return
         values=self.read_xyz()
         if values is None:return
-        if len(self.markers)>=10:
-            messagebox.showinfo('Noktalar','En fazla 10 harita noktası ekleyebilirsiniz.')
-            return
         east,north,altitude=values
         home=self.flight_center
         lat=home[0]+north/111320
@@ -270,18 +306,99 @@ class FlightPro(Cockpit):
         for title,description,mode in [
             ('DÜNYA HARİTASI','Gönderdiğiniz app.py ile aynı OpenStreetMap haritası. Sokaklar, yapılar ve yer adları gerçek harita katmanında görünür. İnternet ilk yüklemede gerekir.','Dünya Haritası'),
             ('UYDU GÖRÜNTÜSÜ','Gönderdiğiniz index.html ile aynı Esri World Imagery katmanı. API anahtarı gerekmez; internet bağlantısı gerekir.','Uydu Görüntüsü'),
+            ('GOOGLE UYDU','Google Maps Static API uydu görüntüsü. API anahtarı, etkin Maps Static API ve Google Cloud faturalandırması gerekir. Kaydırma/yakınlaştırma sonrası yeni merkez görüntüsü istenir.','Google Uydu'),
             ('SİMÜLASYON HARİTASI (3D)','OpenStreetMap yol ve bina verisinden 3D çevre. Bina yüksekliği bilinmiyorsa tahmin edilir. Veri yoksa örnek sahne gösterilir.','Simülasyon Haritası (3D)')]:
             box=tk.Frame(page,bg=SURFACE,padx=18,pady=16)
             box.pack(fill='x',pady=7)
             self.label(box,title,12,YELLOW,True).pack(anchor='w')
             tk.Label(box,text=description,bg=SURFACE,fg=GRAY,wraplength=760,justify='left',font=('Segoe UI',10)).pack(anchor='w',pady=8)
-            ttk.Button(box,text='Bu haritayı kullan',command=lambda m=mode:self.set_map_mode(m)).pack(anchor='w')
+            ttk.Button(box,text=f'{mode} seç',command=lambda m=mode:self.set_map_mode(m)).pack(anchor='w')
+        keybox=tk.Frame(page,bg=SURFACE,padx=18,pady=14);keybox.pack(fill='x',pady=7)
+        self.label(keybox,'GOOGLE MAPS API ANAHTARI',12,YELLOW,True).pack(anchor='w')
+        row=tk.Frame(keybox,bg=SURFACE);row.pack(fill='x',pady=8)
+        self.google_key_var=tk.StringVar(value=self.google_maps_key)
+        tk.Entry(row,textvariable=self.google_key_var,show='•',width=52,bg='#24272b',fg=WHITE,insertbackground=YELLOW,relief='flat').pack(side='left',ipady=7)
+        ttk.Button(row,text='Bu oturumda kullan',command=self.apply_google_key).pack(side='left',padx=8)
+        self.label(keybox,'Anahtar dosyaya kaydedilmez. Kalıcı kullanmak isterseniz Windows’ta GOOGLE_MAPS_API_KEY ortam değişkenini tanımlayın.',9,GRAY).pack(anchor='w')
         self.map_settings_status=tk.StringVar(value='Etkin görünüm: '+self.map_mode)
         tk.Label(page,textvariable=self.map_settings_status,bg=BLACK,fg=WHITE,font=('Segoe UI',11,'bold')).pack(anchor='w',pady=14)
         self.label(page,'Uydu görüntüsünün çekim tarihi bölgeye göre değişir. Yenileme, sağlayıcının sunduğu veriyi kullanır.',9,GRAY).pack(anchor='w')
 
+    def apply_google_key(self):
+        self.google_maps_key=self.google_key_var.get().strip()
+        if not self.google_maps_key:messagebox.showinfo('Google Maps','Anahtar boş bırakıldı. Google uydu görünümü yüklenmez.');return
+        self.google_loaded_signature=None
+        self.map_status.set('Google Maps anahtarı bu oturum için alındı; dosyaya kaydedilmedi.')
+        if self.map_mode=='Google Uydu':self.load_map()
+
+    def load_map(self):
+        if getattr(self,'map_tile_source','osm')!='google':return Atlas.load_map(self)
+        if self.google_loading:
+            self.google_reload_pending=True;return
+        key=self.google_maps_key.strip()
+        if not key:
+            # Google Static Maps cannot return imagery without a billable API key.
+            # Fall back immediately instead of leaving a blank map that appears to hang.
+            self.map_mode='Uydu Görüntüsü';self.map_mode_var.set(self.map_mode)
+            self.map_tile_source='esri';self.osm_enabled=True;self.image=None
+            self.update_map_credit()
+            if hasattr(self,'map_settings_status'):self.map_settings_status.set('Etkin görünüm: '+self.map_mode)
+            self.layer.set('ESRI WORLD IMAGERY • UYDU GÖRÜNTÜSÜ')
+            self.map_status.set('Google anahtarı yok • ücretsiz Esri uydu görünümüne geçildi.')
+            Atlas.load_map(self);return
+        self.root.update_idletasks();lat,lon=self.view_center;zoom=self.view_zoom
+        signature=(round(float(lat),4),round(float(lon),4),int(zoom))
+        if signature==self.google_loaded_signature and self.google_image is not None:
+            self.image=self.google_image
+            self.map_status.set('Google uydu hazır • mevcut görüntü yeniden kullanıldı.')
+            self.draw_map();return
+        self.google_loading=True;self.google_reload_pending=False;self.image=None
+        self.google_request_signature=signature
+        self.map_status.set('Google uydu görüntüsü yükleniyor… API kullanımı kotaya/ücretlendirmeye tabi olabilir.')
+        url=google_static_url(lat,lon,zoom,key)
+        def worker():
+            try:
+                req=Request(url,headers={'User-Agent':'Fentek-Havacilik/1.0'})
+                with urlopen(req,timeout=8) as response:data=response.read(5_000_000)
+                if not data.startswith(b'\x89PNG'):raise ValueError('Google geçerli PNG görüntüsü döndürmedi; API, kota ve faturalandırmayı kontrol edin.')
+                self.google_queue.put(('ok',(lat,lon,zoom,signature,data)))
+            except HTTPError as exc:
+                notes={400:'istek geçersiz',403:'anahtar, Maps Static API veya faturalandırma etkin değil',429:'Google kotası aşıldı'}
+                self.google_queue.put(('error',f'Google HTTP {exc.code}: {notes.get(exc.code,"sunucu isteği reddetti")}'))
+            except (URLError,TimeoutError):
+                self.google_queue.put(('error','Google sunucusuna zamanında ulaşılamadı. İnternet bağlantısını kontrol edin.'))
+            except Exception as exc:self.google_queue.put(('error',str(exc)))
+        threading.Thread(target=worker,daemon=True).start()
+
+    def poll_google(self):
+        try:
+            kind,value=self.google_queue.get_nowait();self.google_loading=False
+            if kind=='ok':
+                lat,lon,zoom,signature,data=value
+                try:self.google_image=tk.PhotoImage(data=base64.b64encode(data));self.image=self.google_image
+                except tk.TclError:self.image=None;self.map_status.set('Google görüntüsü açılamadı.')
+                else:
+                    self.google_loaded_signature=signature
+                    self.map_status.set(f'Google uydu hazır • merkez {lat:.5f}, {lon:.5f} • yakınlaştırma {zoom}')
+                    self.draw_map()
+            else:
+                # Keep the map usable when Google rejects the key or the request
+                # times out. The error remains in the event log for diagnosis.
+                self.event('Google uydu alınamadı: '+value)
+                self.map_mode='Uydu Görüntüsü';self.map_mode_var.set(self.map_mode)
+                self.map_tile_source='esri';self.osm_enabled=True;self.image=None
+                self.update_map_credit()
+                if hasattr(self,'map_settings_status'):self.map_settings_status.set('Etkin görünüm: '+self.map_mode)
+                self.layer.set('ESRI WORLD IMAGERY • UYDU GÖRÜNTÜSÜ')
+                self.map_status.set('Google açılamadı • ücretsiz Esri uydu görünümüne geçiliyor…')
+                Atlas.load_map(self)
+            if self.google_reload_pending:
+                self.google_reload_pending=False;self.root.after_idle(self.load_map)
+        except queue.Empty:pass
+        self.google_job=self.root.after(120,self.poll_google)
+
     def refresh_maps(self):
-        if self.tile_loading or self.feature_loading:
+        if self.tile_loading or self.feature_loading or self.google_loading:
             self.map_status.set('Yükleme sürüyor; tamamlanınca yeniden deneyin.')
             return
         self.tiles.clear()
@@ -298,6 +415,8 @@ class FlightPro(Cockpit):
 
     def change_aircraft(self,event=None):
         self.aircraft_type=self.aircraft_var.get()
+        if getattr(self,'operations',None) and not self.live_map.enabled:
+            self.operations.offline_modes(self.aircraft_type)
         self.event('İHA profili seçildi: '+self.aircraft_type+' (sentetik).')
         self.draw_map()
 
@@ -332,6 +451,11 @@ class FlightPro(Cockpit):
             self.layer.set('ESRI WORLD IMAGERY • UYDU GÖRÜNTÜSÜ')
             self.map_status.set('Esri uydu görüntüleri yükleniyor…')
             self.osm_enabled=True
+            self.load_map()
+        elif self.map_mode=='Google Uydu':
+            self.map_tile_source='google';self.osm_enabled=True
+            self.layer.set('GOOGLE MAPS STATIC API • UYDU GÖRÜNTÜSÜ')
+            self.map_status.set('Google uydu görüntüsü hazırlanıyor…')
             self.load_map()
         else:
             self.layer.set('SİMÜLASYON HARİTASI 3D • SENTETİK SAHNE')
@@ -416,7 +540,7 @@ class FlightPro(Cockpit):
         threading.Thread(target=worker,daemon=True).start()
 
     def map_wheel(self,event):
-        if self.map_mode in ('Dünya Haritası','Uydu Görüntüsü'):return Atlas.map_wheel(self,event)
+        if self.map_mode!='Simülasyon Haritası (3D)':return Atlas.map_wheel(self,event)
         factor=.82 if event.delta>0 else 1.22
         self.zoom_target=max(180,min(1400,self.zoom_target*factor))
         if not self.zoom_job:self.animate_zoom()
@@ -433,25 +557,25 @@ class FlightPro(Cockpit):
         self.zoom_job=self.root.after(16,self.animate_zoom)
 
     def map_press(self,event):
-        if self.map_mode in ('Dünya Haritası','Uydu Görüntüsü'):return Atlas.map_press(self,event)
+        if self.map_mode!='Simülasyon Haritası (3D)':return Atlas.map_press(self,event)
         if self.marking:return
         self.drag_3d=(event.x,event.y,self.camera_yaw,self.camera_tilt)
         self.canvas.configure(cursor='hand2')
 
     def map_drag(self,event):
-        if self.map_mode in ('Dünya Haritası','Uydu Görüntüsü'):return Atlas.map_drag(self,event)
+        if self.map_mode!='Simülasyon Haritası (3D)':return Atlas.map_drag(self,event)
         if not self.drag_3d:return
         self.camera_yaw=self.drag_3d[2]+(event.x-self.drag_3d[0])*.25
         self.camera_tilt=max(20,min(75,self.drag_3d[3]-(event.y-self.drag_3d[1])*.18))
         self.draw_map()
 
     def map_release(self,event):
-        if self.map_mode in ('Dünya Haritası','Uydu Görüntüsü'):return Atlas.map_release(self,event)
+        if self.map_mode!='Simülasyon Haritası (3D)':return Atlas.map_release(self,event)
         self.drag_3d=None
         self.canvas.configure(cursor='fleur')
 
     def center_vehicle(self,event=None):
-        if self.map_mode in ('Dünya Haritası','Uydu Görüntüsü'):return Atlas.center_vehicle(self,event)
+        if self.map_mode!='Simülasyon Haritası (3D)':return Atlas.center_vehicle(self,event)
         self.camera_yaw=-25
         self.camera_tilt=48
         self.zoom_target=520
@@ -535,7 +659,7 @@ class FlightPro(Cockpit):
         return self.project(east,north,marker[2] if len(marker)>2 else 0)
 
     def draw_map(self):
-        if getattr(self,'map_mode','Dünya Haritası') in ('Dünya Haritası','Uydu Görüntüsü'):
+        if getattr(self,'map_mode','Dünya Haritası') in ('Dünya Haritası','Uydu Görüntüsü','Google Uydu'):
             return Atlas.draw_map(self)
         c=self.canvas;c.delete('all')
         w,h=c.winfo_width(),c.winfo_height()
@@ -682,9 +806,14 @@ class FlightPro(Cockpit):
         super().tick()
 
     def close(self):
+        if getattr(self,'alert_manager',None):self.alert_manager.close()
+        if getattr(self,'pilot_ari',None):self.pilot_ari.close()
+        if getattr(self,'camera_view',None):self.camera_view.close()
+        if getattr(self,'operations',None):self.operations.close()
+        if getattr(self,'ground_tools',None):self.ground_tools.close()
         if getattr(self,'live_map',None):self.live_map.disconnect()
         if self.startup_intro:self.startup_intro.close()
-        for job in (self.zoom_job,self.location_job,self.feature_job):
+        for job in (self.zoom_job,self.location_job,self.feature_job,self.google_job):
             if job:
                 try:self.root.after_cancel(job)
                 except tk.TclError:pass

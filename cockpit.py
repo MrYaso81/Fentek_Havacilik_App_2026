@@ -24,7 +24,7 @@ class Cockpit(Atlas):
         title=tk.Frame(live,bg=BLACK)
         title.pack(fill='x',pady=(0,10))
         self.label(title,'CANLI UÇUŞ MERKEZİ',19,WHITE,True).pack(side='left')
-        self.balance_badge=tk.Label(title,text='  DENGE MODU AÇIK  ',bg='#3b3519',fg=YELLOW,font=('Segoe UI',10,'bold'),padx=12,pady=8)
+        self.balance_badge=tk.Label(title,text='  SENTETİK DENGE DEMOSU  ',bg='#3b3519',fg=YELLOW,font=('Segoe UI',10,'bold'),padx=12,pady=8)
         self.balance_badge.pack(side='right')
         area=tk.Frame(live,bg=BLACK)
         area.pack(fill='both',expand=True)
@@ -80,14 +80,37 @@ class Cockpit(Atlas):
         self.side_heading(right,'SİSTEM DURUMU')
         self.horizon=tk.Canvas(right,height=90,bg='#202327',highlightthickness=0)
         self.horizon.pack(fill='x',pady=(0,8))
-        for key,label in [('arm','ARM'),('battery','Batarya'),('gps','GPS'),('link','Telemetri'),('data_age','Veri yaşı')]:
+        self.battery_card=tk.Frame(right,bg='#191c1f',padx=9,pady=7,highlightthickness=1,highlightbackground='#3b3e43')
+        self.battery_card.pack(fill='x',pady=(0,8))
+        battery_top=tk.Frame(self.battery_card,bg='#191c1f')
+        battery_top.pack(fill='x')
+        tk.Label(battery_top,text='BATARYA',bg='#191c1f',fg=GRAY,font=('Segoe UI',8,'bold')).pack(side='left')
+        self.battery_source=tk.Label(battery_top,text='SENTETİK',bg='#3b3519',fg=YELLOW,font=('Segoe UI',7,'bold'),padx=5,pady=2)
+        self.battery_source.pack(side='left',padx=7)
+        self.battery_big=tk.Label(battery_top,text='—',bg='#191c1f',fg=WHITE,font=('Segoe UI',18,'bold'))
+        self.battery_big.pack(side='right')
+        self.battery_bar=tk.Canvas(self.battery_card,height=12,bg='#292d31',highlightthickness=0)
+        self.battery_bar.pack(fill='x',pady=(5,4))
+        self.battery_bar.bind('<Configure>',lambda _e:self._draw_battery_bar())
+        self.battery_detail=tk.Label(self.battery_card,text='Gerçek ölçüm bekleniyor',bg='#191c1f',fg=GRAY,font=('Segoe UI',8),anchor='w')
+        self.battery_detail.pack(fill='x')
+        self.battery_percent=None
+        self.battery_color=WHITE
+        for key,label in [('arm','ARM'),('battery','Batarya'),('battery_current','Akım / tüketim'),('gps','GPS'),('link','Telemetri'),('data_age','Veri yaşı')]:
             value=self.compact_info_row(right,key,label)
             if key=='arm':self.arm_panel_label=value
-        self.side_heading(right,'UÇUŞ KONTROLÜ')
-        self.balance_button=ttk.Button(right,text='Denge modunu kapat',command=self.toggle_balance)
-        self.balance_button.pack(fill='x',pady=8)
-        ttk.Button(right,text='Demo kontrolleri',command=lambda:self.select('Demo kontrolleri'),style='Dark.TButton').pack(fill='x',pady=5)
-        self.balance_note=tk.StringVar(value='Sentetik STABILIZE etkin. Gerçek karta komut gönderilmez.')
+            if key=='battery':self.battery_panel_label=value
+        self.side_heading(right,'DEMO DENGE GÖSTERİMİ')
+        self.balance_button=tk.Button(right,text='Demo denge: AÇIK',command=self.toggle_balance,bg=YELLOW,fg=BLACK,
+                                      activebackground='#ffe36a',activeforeground=BLACK,disabledforeground='#a8a8a8',
+                                      relief='flat',bd=0,padx=8,pady=9,font=('Segoe UI',9,'bold'),cursor='hand2')
+        self.balance_button.pack(fill='x',pady=(8,5))
+        self.demo_controls_button=tk.Button(right,text='Diğer demo kontrolleri',command=lambda:self.select('Demo kontrolleri'),
+                                            bg='#292b2f',fg=WHITE,activebackground='#3b3e43',activeforeground=WHITE,
+                                            disabledforeground='#8f959f',relief='flat',bd=0,padx=8,pady=8,
+                                            font=('Segoe UI',9,'bold'),cursor='hand2')
+        self.demo_controls_button.pack(fill='x',pady=5)
+        self.balance_note=tk.StringVar(value='Yalnız ekrandaki örnek İHA animasyonudur. Gerçek Cube modunu değiştirmez.')
         tk.Label(right,textvariable=self.balance_note,bg=SURFACE,fg=GRAY,wraplength=195,justify='left',font=('Segoe UI',9)).pack(anchor='w',pady=12)
         self.side_heading(right,'KONUM / YEREL EKSEN')
         for key,label in [('city','Şehir'),('country','Ülke'),('x','X / Doğu'),('y','Y / Kuzey'),('z','Z / İrtifa')]:
@@ -116,18 +139,57 @@ class Cockpit(Atlas):
         value.pack(side='right')
         return value
 
+    def _draw_battery_bar(self):
+        if not hasattr(self,'battery_bar'):return
+        bar=self.battery_bar
+        bar.delete('all')
+        width=max(1,bar.winfo_width())
+        if self.battery_percent is not None:
+            fill=width*max(0,min(100,self.battery_percent))/100
+            if fill>0:bar.create_rectangle(0,0,fill,12,fill=self.battery_color,outline='')
+
+    def update_battery_gauge(self,percent=None,voltage=None,current=None,consumed=None,demo=False,live=False,fresh=True):
+        """Show one prominent battery summary for demo and live MAVLink data."""
+        if not hasattr(self,'battery_big'):return
+        self.battery_percent=percent
+        self.battery_color=('#ff6259' if percent is not None and percent<=20 else
+                            '#ffd42a' if percent is not None and percent<=50 else
+                            '#72d6a0' if percent is not None else WHITE)
+        self.battery_big.configure(text='—' if percent is None else f'%{percent:.0f}',fg=self.battery_color)
+        detail=[]
+        if voltage is not None:detail.append(f'{voltage:.2f} V')
+        if current is not None:detail.append(f'{current:.2f} A')
+        if consumed is not None:detail.append(f'{consumed:.0f} mAh')
+        if demo:
+            detail.append('SENTETİK VERİ')
+            self.battery_source.configure(text='SENTETİK',bg='#3b3519',fg=YELLOW)
+        elif live and fresh:
+            self.battery_source.configure(text='CANLI CUBE',bg='#193c32',fg='#72d6a0')
+        elif live:
+            detail.append('GÜNCEL DEĞİL')
+            self.battery_source.configure(text='SON VERİ',bg='#3b2020',fg='#ff8d79')
+        else:
+            self.battery_source.configure(text='BEKLENİYOR',bg='#292d31',fg=GRAY)
+        self.battery_detail.configure(text='  •  '.join(detail) if detail else 'Gerçek ölçüm bekleniyor',
+                                      fg=YELLOW if demo else GRAY)
+        self._draw_battery_bar()
+
     def toggle_balance(self):
+        live=getattr(self,'live_map',None)
+        if live and live.enabled:
+            live.request_stabilize()
+            return
         self.balance_mode=not self.balance_mode
         self.balance_changed=time.monotonic()
         if self.balance_mode:
-            self.balance_button['text']='Denge modunu kapat'
-            self.balance_badge.configure(text='  DENGE MODU AÇIK  ',bg='#3b3519',fg=YELLOW)
-            self.balance_note.set('Sentetik STABILIZE etkin. Yatış ve yunuslama azaltılır.')
+            self.balance_button['text']='Demo denge: AÇIK'
+            self.balance_badge.configure(text='  SENTETİK DENGE DEMOSU  ',bg='#3b3519',fg=YELLOW)
+            self.balance_note.set('Yalnız ekrandaki örnek İHA dengelenir. Gerçek Cube modu değişmez.')
             self.event('Sentetik denge modu uzaktan AÇILDI. Gerçek karta komut gönderilmedi.')
         else:
-            self.balance_button['text']='Denge modunu aç'
-            self.balance_badge.configure(text='  DENGE MODU KAPALI  ',bg='#3b2020',fg='#ff8d79')
-            self.balance_note.set('Sentetik MANUAL etkin. Gerçek karta komut gönderilmez.')
+            self.balance_button['text']='Demo denge: KAPALI'
+            self.balance_badge.configure(text='  SENTETİK DENGE KAPALI  ',bg='#3b2020',fg='#ff8d79')
+            self.balance_note.set('Yalnız sentetik animasyon serbest hareket eder. Gerçek Cube modu değişmez.')
             self.event('Sentetik denge modu uzaktan KAPATILDI. Gerçek karta komut gönderilmedi.')
         self.update_cockpit_rows()
 
@@ -152,9 +214,10 @@ class Cockpit(Atlas):
         self.arm_initialized=True
         if hasattr(self,'arm_panel_label'):
             self.arm_panel_label.configure(fg=YELLOW if armed else GRAY)
-        values={'altitude':f"{d['altitude']:.1f} m",'speed':f"{d['speed']:.1f} m/s",'heading':f"{d['heading']:03.0f}°",'mode':'STABILIZE' if self.balance_mode else 'MANUAL','elapsed':f'{int(self.t)//60:02}:{int(self.t)%60:02}','lat':f"{d['lat']:.7f}",'lon':f"{d['lon']:.7f}",'home':f'{(north*north+east*east)**.5:.0f} m','arm':'ARM • UÇUŞTA' if armed else 'DISARM • YERDE','battery':f"%{d['battery']:.0f}",'gps':f"3D FIX • {d['satellites']} uydu",'link':'BAĞLI' if self.link else 'KOPTU','data_age':f'{time.monotonic()-self.last_received:.1f} sn','city':getattr(self,'place_city','Aranıyor…'),'country':getattr(self,'place_country','—'),'x':f'{east:+.1f} m','y':f'{north:+.1f} m','z':f"{d['altitude']:+.1f} m"}
+        values={'altitude':f"{d['altitude']:.1f} m",'speed':f"{d['speed']:.1f} m/s",'heading':f"{d['heading']:03.0f}°",'mode':'STABILIZE' if self.balance_mode else 'MANUAL','elapsed':f'{int(self.t)//60:02}:{int(self.t)%60:02}','lat':f"{d['lat']:.7f}",'lon':f"{d['lon']:.7f}",'home':f'{(north*north+east*east)**.5:.0f} m','arm':'ARM • UÇUŞTA' if armed else 'DISARM • YERDE','battery':f"%{d['battery']:.0f} • DEMO",'battery_current':'— • DEMO','gps':f"3D FIX • {d['satellites']} uydu",'link':'BAĞLI' if self.link else 'KOPTU','data_age':f'{time.monotonic()-self.last_received:.1f} sn','city':getattr(self,'place_city','Aranıyor…'),'country':getattr(self,'place_country','—'),'x':f'{east:+.1f} m','y':f'{north:+.1f} m','z':f"{d['altitude']:+.1f} m"}
         values.update(pos_x=f'{north:+.2f}',pos_y=f'{east:+.2f}',pos_z=f"{-d['altitude']:+.2f}")
         for key,value in values.items():self.cockpit_rows[key].set(value)
+        self.update_battery_gauge(d['battery'],demo=True)
 
     def tick(self):
         super().tick()
