@@ -84,9 +84,9 @@ Güncel **cockpit.py** ekranında harita ortada, uçuş/konum tablosu solda ve s
 
 Harita üzerinde sol tuşu basılı tutup sürükleyerek görünümü kaydırabilirsiniz. Fare tekerleği imlecin bulunduğu noktaya yakınlaştırır veya uzaklaştırır. Haritaya çift tıklamak görünümü sentetik İHA'nın son konumuna getirir. İşaret ekleme açıkken sol tıklama haritayı sürüklemek yerine numaralı not noktası ekler.
 
-## Kurulum ve test merkezi
+## Kalibrasyon merkezi
 
-Kurulum ve test sayfası gerçek Cube için korumalı bir yer çalışma alanıdır. Bağlantı penceresinde **USB yer kurulumu** seçilmeli, kart güncel ve DISARMED olmalıdır. Jiroskop, düz seviye, altı yön ivmeölçer, pusula, RC kumanda, ESC ve hava hızı kalibrasyon komutları buradan gönderilir; kartın ACK ve durum mesajları ekranda izlenir.
+Sol menüdeki **Kalibrasyon merkezi** gerçek Cube için korumalı bir yer çalışma alanıdır. Uçuş ekranında da aynı bölüme giden hızlı erişim düğmesi bulunur. Sayfada **USB ile kalibrasyona bağlan** ve **Telemetriyle canlı bağlan** seçenekleri ayrıdır. Kalibrasyon için bağlantı penceresinde **USB yer kurulumu** açık olmalı, kart güncel ve DISARMED olmalıdır. Jiroskop, düz seviye, altı yön ivmeölçer, pusula, RC kumanda, ESC ve hava hızı kalibrasyon komutları buradan gönderilir; kartın ACK ve durum mesajları ekranda izlenir. Telemetri bağlantısı canlı uçuş verileri içindir ve uzaktan kalibrasyonu açmaz.
 
 Motor/servo testi yalnız aynı USB yer kurulumu bağlantısında, DISARMED kartta, güvenlik onayı ve `PERVANELER SÖKÜLDÜ` ifadesiyle açılır. Motor testi en fazla %30 ve 5 saniye, servo testi en fazla 3 saniyedir; servo süre sonunda nötre döner. Acil durdurma aktif servoyu nötre ve motor testlerini %0'a çeker. Motor yönü ve servo çıkış eşlemesi JSON raporuna kaydedilebilir. Yazılım kilitleri fiziksel güvenli stant, enerji sınırı ve üretici talimatlarının yerini tutmaz.
 

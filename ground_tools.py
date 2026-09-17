@@ -17,9 +17,13 @@ class GroundTools:
         self._build();self.job=app.root.after(500,self.refresh)
 
     def _build(self):
-        page=self.app.pages['Kurulum ve test']
+        page=self.app.pages['Kalibrasyon merkezi']
         for child in page.winfo_children():child.destroy()
-        self.app.heading(page,'GERÇEK KURULUM VE YER TESTİ','Canlı Cube • USB yer kurulumu • DISARMED • Pervaneler sökülü')
+        self.app.heading(page,'KALİBRASYON MERKEZİ','Cube Orange • USB yer kurulumu • DISARMED • Adım adım kart doğrulaması')
+        connection=tk.Frame(page,bg='#111315',padx=12,pady=9);connection.pack(fill='x',pady=(0,8))
+        tk.Button(connection,text='USB İLE KALİBRASYONA BAĞLAN',command=lambda:self.app.live_map.dialog(True),bg=YELLOW,fg=BLACK,activebackground='#ffe36a',relief='flat',padx=13,pady=8,font=('Segoe UI',9,'bold'),cursor='hand2').pack(side='left',padx=(0,8))
+        tk.Button(connection,text='TELEMETRİYLE CANLI BAĞLAN',command=lambda:self.app.live_map.dialog(False),bg='#30343a',fg=WHITE,activebackground='#454950',activeforeground=WHITE,relief='flat',padx=13,pady=8,font=('Segoe UI',9,'bold'),cursor='hand2').pack(side='left',padx=8)
+        tk.Button(connection,text='Bağlantıyı kes',command=self.app.live_map.disconnect,bg='#30343a',fg=WHITE,activebackground='#454950',activeforeground=WHITE,relief='flat',padx=13,pady=8,font=('Segoe UI',9,'bold'),cursor='hand2').pack(side='left',padx=8)
         self.connection_status=tk.StringVar(value='KİLİTLİ • Cube bağlantısında USB yer kurulumu seçilmelidir.')
         tk.Label(page,textvariable=self.connection_status,bg='#302a12',fg=YELLOW,anchor='w',padx=12,pady=8,font=('Segoe UI',10,'bold')).pack(fill='x',pady=(0,8))
         tabs=ttk.Notebook(page);tabs.pack(fill='both',expand=True)
@@ -43,6 +47,8 @@ class GroundTools:
         for start in (0,3):
             row=tk.Frame(p,bg=BLACK);row.pack(fill='x',pady=5)
             for title,action in specs[start:start+3]:self.cal_buttons.append(self._button(row,title,lambda a=action:self.calibrate(a)))
+        self._label(p,'Jiroskop: açısal hareket sıfırı  •  Düz seviye: uçuş duruşu referansı  •  İvmeölçer: altı yüz konumu',9,GRAY)
+        self._label(p,'Pusula: manyetik yön  •  RC kumanda: kanal uçları/merkezleri  •  Hava hızı: sabit kanat sensörü',9,GRAY)
         row=tk.Frame(p,bg=BLACK);row.pack(fill='x',pady=7)
         self.next_button=self._button(row,'İstenen yönde sabit • Devam',lambda:self.calibrate('position'));self.next_button.configure(state='disabled')
         self.cal_status=tk.StringVar(value='Kalibrasyon bekleniyor.')

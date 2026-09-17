@@ -41,7 +41,7 @@ TOPICS = (
      'Taslağa al yeni değeri yalnız ekranda hazırlar. Karta yaz düğmesi DISARMED bağlantı, kullanıcı onayı, sayısal tür kontrolü ve karttan geri doğrulama ister.'),
     ('Parametre','Değişiklik geçmişi ve geri alma',
      'Karttan PARAM_VALUE ile doğrulanmış her yazma, önceki ve yeni değeriyle oturum geçmişine eklenir. Geri alma yalnız kartın güncel değeri geçmişte kaydedilen yeni değerle aynıysa hazırlanır; DISARMED ve ikinci kullanıcı onayından sonra yazılıp tekrar karttan doğrulanır. Bilinen batarya, fence, RC ve servo alanları yerel aralık denetiminden geçer; bilinmeyen firmware parametresine aralık uydurulmaz.'),
-    ('Kurulum','Gerçek kalibrasyon merkezi',
+    ('Kalibrasyon merkezi','Gerçek kalibrasyon merkezi',
      'Cube bağlantı penceresinde USB yer kurulumu seçilip kart DISARMED doğrulandığında jiroskop, düz seviye, altı yön ivmeölçer, pusula, RC kumanda, ESC ve hava hızı kalibrasyon komutları açılır. Kartın ACK ve yön talepleri ekranda gösterilir. ESC için pervanelerin söküldüğü ayrıca onaylanır. Komutun kabul edilmesi fiziksel kalibrasyonun doğruluğunu tek başına kanıtlamaz.'),
     ('Kurulum','Güvenli motor ve servo testi',
      'Motor ve servo testi yalnız USB yer kurulumu, güncel DISARMED Cube, onay kutusu ve “PERVANELER SÖKÜLDÜ” metniyle açılır. Motor komutu %30 ve 5 saniye; servo komutu 3 saniye ile sınırlıdır. Servo otomatik nötr değere döner. Acil durdurma motorlara %0 ve aktif servoya nötr gönderir. Gözlenen motor yönü ve servo işlevleri JSON raporuna kaydedilebilir.'),

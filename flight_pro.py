@@ -69,6 +69,9 @@ class FlightPro(Cockpit):
         self.camera_view=CameraView(self)
         self.add_flight_controls()
         self.build_map_settings()
+        # Give the safety-critical calibration workflow a clear, dedicated name.
+        if 'Kurulum ve test' in self.pages:
+            self.pages['Kalibrasyon merkezi']=self.pages.pop('Kurulum ve test')
         from operations import Operations
         self.operations=Operations(self)
         from ground_tools import GroundTools
@@ -95,6 +98,7 @@ class FlightPro(Cockpit):
         quick.pack(fill='x',before=live.winfo_children()[1],pady=(0,10))
         self.connect_button=ttk.Button(quick,text='⌁  CUBE’A BAĞLAN • CANLI KONUM',command=self.live_map.dialog)
         self.connect_button.pack(side='left',padx=(0,7))
+        ttk.Button(quick,text='⚙  Kalibrasyon merkezi',command=lambda:self.select('Kalibrasyon merkezi'),style='Dark.TButton').pack(side='left',padx=7)
         self.live_map.arm_button=ttk.Button(quick,text='ARM',command=self.live_map.arm_toggle,style='Dark.TButton',state='disabled')
         self.live_map.arm_button.pack(side='left',padx=7)
         ttk.Button(quick,text='Görev planlama',command=lambda:self.select('Görev planlama'),style='Dark.TButton').pack(side='left',padx=7)

@@ -27,10 +27,10 @@ assert app.pilot_ari.entry.master.master.winfo_height()>=90
 app.pilot_ari.entry.insert(0,'Pilot Arı yazı testi')
 assert app.pilot_ari.entry.get()=='Pilot Arı yazı testi'
 app.pilot_ari.entry.delete(0,'end')
-for name in ('Uçuş modu özellikleri','Doğrudan kontrol','Görev planlama','Ölçüm araçları','Rally / Güvenli iniş','Parametreler','Güvenlik','ArduPilot SITL Testi','Kablosuz Telemetri','Telemetri','Yardımcı donanım','Bilgi ve Kılavuz','Uyarılar','Pilot Arı','Kamera görüntüsü','Uçuş ekranı'):
+for name in ('Uçuş modu özellikleri','Doğrudan kontrol','Görev planlama','Ölçüm araçları','Rally / Güvenli iniş','Parametreler','Güvenlik','ArduPilot SITL Testi','Kablosuz Telemetri','Telemetri','Yardımcı donanım','Bilgi ve Kılavuz','Uyarılar','Pilot Arı','Kamera görüntüsü','Kalibrasyon merkezi','Uçuş ekranı'):
     app.select(name);root.update()
     assert app.pages[name].winfo_ismapped(),name
-app.select('Kurulum ve test');root.update()
+app.select('Kalibrasyon merkezi');root.update()
 assert app.ground_tools.motor_button.cget('state')=='disabled'
 assert app.ground_tools.servo_button.cget('state')=='disabled'
 assert app.ground_tools.next_button.cget('state')=='disabled'

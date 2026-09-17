@@ -57,17 +57,21 @@ class LiveMap:
         self.connection='STABILIZE modu gönderildi; kart doğrulaması bekleniyor.'
         self.text.set(self.connection)
 
-    def dialog(self):
+    def dialog(self,setup=None):
+        if setup is not None:self.setup_mode.set(bool(setup))
         if getattr(self,'window',None) and self.window.winfo_exists():self.window.lift();return
-        w=tk.Toplevel(self.app.root);self.window=w;w.title('Cube Orange • Canlı bağlantı');w.geometry('900x390');w.minsize(820,360);w.configure(bg='#17191c');w.resizable(True,True)
+        w=tk.Toplevel(self.app.root);self.window=w;w.title('Cube Orange • USB ve telemetri bağlantısı');w.geometry('920x475');w.minsize(840,440);w.configure(bg='#17191c');w.resizable(True,True)
         style=ttk.Style(w)
         style.configure('Live.TEntry',fieldbackground='#24272b',foreground='#f1f2f4',insertcolor='#ffd42a')
         style.configure('Live.TCombobox',fieldbackground='#24272b',foreground='#f1f2f4')
         style.configure('Live.TButton',background='#2a2c30',foreground='#f1f2f4',padding=(12,8),font=('Segoe UI',10,'bold'))
         style.map('Live.TButton',background=[('active','#45484e')])
         box=tk.Frame(w,bg='#17191c',padx=24,pady=20);box.pack(fill='both',expand=True)
-        tk.Label(box,text='CUBE ORANGE • CANLI TELEMETRİ',bg='#17191c',fg='#ffd42a',font=('Segoe UI',16,'bold')).pack(anchor='w')
-        tk.Label(box,text='WGS84 koordinatları doğrudan Cube GPS’inden okunur.',bg='#17191c',fg='#b8bcc4',font=('Segoe UI',10)).pack(anchor='w',pady=(4,18))
+        tk.Label(box,text='CUBE ORANGE • USB VE TELEMETRİ BAĞLANTISI',bg='#17191c',fg='#ffd42a',font=('Segoe UI',16,'bold')).pack(anchor='w')
+        tk.Label(box,text='USB: kalibrasyon ve yerde kurulum • Telemetri: canlı konum ve uçuş verileri',bg='#17191c',fg='#b8bcc4',font=('Segoe UI',10)).pack(anchor='w',pady=(4,12))
+        mode_box=tk.Frame(box,bg='#111315',padx=12,pady=9);mode_box.pack(fill='x',pady=(0,8))
+        ttk.Checkbutton(mode_box,text='USB yer kurulumu • Kalibrasyon ve pervanesiz çıkış testlerine izin ver',variable=self.setup_mode).pack(anchor='w')
+        tk.Label(mode_box,text='Telemetri radyosu kullanırken bu kutuyu kapalı bırakın. Kalibrasyon uzaktan açılmaz.',bg='#111315',fg='#8f959f',font=('Segoe UI',9)).pack(anchor='w',pady=(3,0))
         auto=tk.Frame(box,bg='#111315',padx=12,pady=10);auto.pack(fill='x',pady=(0,10))
         ttk.Checkbutton(auto,text='USB telemetri takılınca otomatik bağlan',variable=self.auto_watch).pack(side='left')
         ttk.Button(auto,text='Şimdi otomatik tara',command=lambda:self.scan_ports(True),style='Live.TButton').pack(side='left',padx=10)
@@ -85,7 +89,7 @@ class LiveMap:
         if port_values: address.set(port_values[0])
         self.address_widget=address
         ttk.Button(row,text='↻ COM tara',command=lambda: self.refresh_ports(address),style='Live.TButton').pack(side='left')
-        tk.Label(row,text='Baud',bg='#17191c',fg='#e7e9ee').pack(side='left');baud=ttk.Combobox(row,width=8,values=('57600','115200','230400','460800','921600'),state='readonly',style='Live.TCombobox');baud.set('57600');baud.pack(side='left',padx=6)
+        tk.Label(row,text='Baud',bg='#17191c',fg='#e7e9ee').pack(side='left');baud=ttk.Combobox(row,width=8,values=('57600','115200','230400','460800','921600'),state='readonly',style='Live.TCombobox');baud.set('115200' if self.setup_mode.get() else '57600');baud.pack(side='left',padx=6)
         self.baud_widget=baud
         tk.Label(row,text='Araç ID',bg='#17191c',fg='#e7e9ee').pack(side='left');target=ttk.Entry(row,width=4,style='Live.TEntry');target.insert(0,'1');target.pack(side='left',padx=6)
         def connect():
@@ -97,7 +101,6 @@ class LiveMap:
             except (ValueError,RuntimeError) as exc:messagebox.showerror('Bağlantı',str(exc),parent=w)
         tk.Button(box,text='  BAĞLAN VE CANLI KONUMU GÖSTER  ',command=connect,bg='#ffd42a',fg='#0c0d0f',relief='flat',font=('Segoe UI',11,'bold'),padx=12,pady=9,cursor='hand2').pack(anchor='w',pady=(2,8))
         tk.Button(box,text='Bağlantıyı kes',command=self.disconnect,bg='#2a2c30',fg='#f1f2f4',relief='flat',font=('Segoe UI',10),padx=12,pady=7).pack(anchor='w',pady=(0,10))
-        ttk.Checkbutton(box,text='USB yer kurulumu • Kalibrasyon ve pervanesiz çıkış testlerine izin ver',variable=self.setup_mode).pack(anchor='w',pady=(0,6))
         ttk.Checkbutton(box,text='Harita İHA’yı takip etsin',variable=self.follow).pack(anchor='w')
         tk.Label(box,text='Uçuş modu, görev ve failsafe işlemleri kendi çalışma alanlarından yönetilir. Bağlantı kesilince son gerçek veri tutulur.',bg='#17191c',fg='#8f959f',font=('Segoe UI',9)).pack(anchor='w',pady=(12,0))
         self.auto_next_scan=0
