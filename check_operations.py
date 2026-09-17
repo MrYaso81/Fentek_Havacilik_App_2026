@@ -35,6 +35,11 @@ assert app.ground_tools.motor_button.cget('state')=='disabled'
 assert app.ground_tools.servo_button.cget('state')=='disabled'
 assert app.ground_tools.next_button.cget('state')=='disabled'
 assert len(app.ground_tools.cal_buttons)==6
+assert app.ground_tools.start_cal_button.cget('state')=='disabled'
+assert all(button.cget('state')=='normal' for button in app.ground_tools.cal_buttons)
+app.ground_tools.select_calibration('compass')
+assert app.ground_tools.selected_calibration.get()=='compass'
+assert 'PUSULA' in app.ground_tools.cal_choice_title.get()
 app.select('Kamera görüntüsü');root.update()
 assert app.camera_view.start_button.cget('state')=='normal'
 assert app.camera_view.record_button.cget('text')=='●  Kaydı başlat'
