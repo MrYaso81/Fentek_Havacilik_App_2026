@@ -8,4 +8,9 @@ Fentek_Havacilik_App/
 
 .../
 .git_previous/
+.build_tools/
+build/
+dist/
+release/
+*.spec.bak
 
